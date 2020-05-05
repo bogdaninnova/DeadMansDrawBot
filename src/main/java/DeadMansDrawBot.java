@@ -3,64 +3,126 @@ import org.telegram.telegrambots.bots.TelegramLongPollingBot;
 import org.telegram.telegrambots.meta.api.methods.send.SendMessage;
 import org.telegram.telegrambots.meta.api.objects.Update;
 import org.telegram.telegrambots.meta.api.objects.User;
+import org.telegram.telegrambots.meta.api.objects.replykeyboard.InlineKeyboardMarkup;
+import org.telegram.telegrambots.meta.api.objects.replykeyboard.buttons.InlineKeyboardButton;
 import org.telegram.telegrambots.meta.exceptions.TelegramApiException;
+
+import java.util.ArrayList;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Set;
 
 public class DeadMansDrawBot extends TelegramLongPollingBot {
 
-    private final String BRIEFCASE_EMOJI = ":briefcase:";
-    private final String OCTOPUS_EMOJI = ":octopus:";
-    private final String ANCHOR_EMOJI = ":anchor:";
-    private final String PICK_EMOJI = ":pick:";
-    private final String DAGGER_EMOJI = ":dagger:";
-    private final String OLD_KEY_EMOJI = ":old_key:";
-    private final String CRYSTAL_BALL_EMOJI = ":crystal_ball:";
-    private final String BOMB_EMOJI = ":bomb:";
-    private final String WORLD_MAP_EMOJI = ":world_map:";
-    private final String MERMAID_EMOJI = ":mermaid:";
-    private final String TWO_EMOJI = ":two:";
-    private final String THREE_EMOJI = ":three:";
-    private final String FOUR_EMOJI = ":four:";
-    private final String FIVE_EMOJI = ":five:";
-    private final String SIX_EMOJI = ":six:";
-    private final String SEVEN_EMOJI = ":seven:";
-    private final String EIGHT_EMOJI = ":eight:";
-    private final String NINE_EMOJI = ":nine:";
 
-
+    Deck deck = new Deck();
+    Player player;
 
     @Override
     public void onUpdateReceived(Update update) {
 
-        String text = update.getMessage().getText();
-        User user = update.getMessage().getFrom();
-        long chatId = update.getMessage().getChatId();
+        if (update.hasMessage()) {
 
-        String pics = EmojiParser.parseToUnicode(
-                BRIEFCASE_EMOJI +
-                        OCTOPUS_EMOJI +
-                        ANCHOR_EMOJI +
-                        PICK_EMOJI +
-                        DAGGER_EMOJI +
-                        OLD_KEY_EMOJI +
-                        CRYSTAL_BALL_EMOJI +
-                        BOMB_EMOJI +
-                        WORLD_MAP_EMOJI +
-                        MERMAID_EMOJI
-        );
-        String numbers = EmojiParser.parseToUnicode(
-                TWO_EMOJI +
-                        THREE_EMOJI +
-                        FOUR_EMOJI +
-                        FIVE_EMOJI +
-                        SIX_EMOJI +
-                        SEVEN_EMOJI +
-                        EIGHT_EMOJI +
-                        NINE_EMOJI
-        );
-        sendSimpleMessage(pics, chatId);
-        sendSimpleMessage(numbers, chatId);
+            String text = update.getMessage().getText();
+            User user = update.getMessage().getFrom();
+            long chatId = update.getMessage().getChatId();
+
+            if (player == null)
+                player = new Player(user);
+
+            System.out.println(text);
+            System.out.println(user);
+
+            if (text.equals("/next")) {
+                nextAction(chatId);
+            }
+
+            if (text.equals("/pass")) {
+                passAction(chatId);
+            }
+
+
+            if (text.equals("/show")) {
+                sendSimpleMessage(EmojiParser.parseToUnicode(player.getAllCardsToString()), chatId);
+            }
+
+            if (text.equals("test")) {
+                sendInlineKeyBoardMessage(new ArrayList<>(player.getAllCards().keySet()), chatId);
+            }
+        } else if (update.hasCallbackQuery()) {
+            long chatId = update.getCallbackQuery().getMessage().getChatId();
+            String action = update.getCallbackQuery().getData();
+            if (action.equals("More action"))
+                nextAction(chatId);
+            else if (action.equals("Pass action"))
+                passAction(chatId);
+
+
+        }
+
+
+
+
+
 
     }
+
+
+    public void nextAction(long chatId) {
+        deck.getCardFromDeck();
+
+        if (deck.checkDuplicatesOnTable()) {
+            sendSimpleMessage(EmojiParser.parseToUnicode(deck.getTableString()), chatId);
+            sendSimpleMessage("You lost all!", chatId);
+            deck.throwCardsToTrash();
+        } else {
+            ArrayList<String> resultTable = new ArrayList<>();
+
+            for (Card card : deck.getTableCards())
+                resultTable.add(card.toString());
+
+            sendInlineKeyBoardMessage(resultTable, chatId);
+        }
+    }
+
+    public void passAction(long chatId) {
+        player.addCards(deck.takeTableCards());
+        sendSimpleMessage(EmojiParser.parseToUnicode(player.getCards().toString()), chatId);
+    }
+
+    public void sendInlineKeyBoardMessage(ArrayList<String> list, long chatId) {
+        InlineKeyboardMarkup inlineKeyboardMarkup = new InlineKeyboardMarkup();
+        List<List<InlineKeyboardButton>> rowList = new ArrayList<>();
+
+        List<InlineKeyboardButton> keyboardButtonsRow1 = new ArrayList<>();
+        List<InlineKeyboardButton> keyboardButtonsRow2 = new ArrayList<>();
+        List<InlineKeyboardButton> keyboardButtonsRow3 = new ArrayList<>();
+
+        for (int i = 0; i < list.size(); i++) {
+            if (i < 5)
+                keyboardButtonsRow1.add(new InlineKeyboardButton().setText(EmojiParser.parseToUnicode((list.get(i)))).setCallbackData("action" + list.get(i)));
+            else
+                keyboardButtonsRow2.add(new InlineKeyboardButton().setText(EmojiParser.parseToUnicode((list.get(i)))).setCallbackData("action" + list.get(i)));
+        }
+
+        rowList.add(keyboardButtonsRow1);
+        if (!keyboardButtonsRow2.isEmpty())
+            rowList.add(keyboardButtonsRow2);
+
+        keyboardButtonsRow3.add(new InlineKeyboardButton().setText("More").setCallbackData("More action"));
+        keyboardButtonsRow3.add(new InlineKeyboardButton().setText("Pass").setCallbackData("Pass action"));
+        rowList.add(keyboardButtonsRow3);
+
+        inlineKeyboardMarkup.setKeyboard(rowList);
+
+        try {
+            execute(new SendMessage().setChatId(chatId).setText("Пример").setReplyMarkup(inlineKeyboardMarkup));
+        } catch (TelegramApiException e) {
+            e.printStackTrace();
+        }
+
+    }
+
 
     private void sendSimpleMessage(String text, long chatId) {
         SendMessage message = new SendMessage().setChatId(chatId).setText(text);
